@@ -32,11 +32,31 @@ from rez import serialise
 logging.basicConfig(level=logging.INFO)
 ROOT = pathlib.Path(os.getcwd())
 
+REZ_ENV = ["rez", "env", "--shell", "powershell"]
 
-commands = {
-    "#code": lambda requires: requires + ["--", "code", str(ROOT)],
-    "#mobu": lambda requires: requires
-    + ["motionbuilder-2018", "--", "motionbuilder.exe"],
+
+def build_sym(req):
+    package = ROOT / "package.py"
+    if not package.exists():
+        return
+    
+    build_command = " ".join(["rez", "build", "--i", "--symlink"])
+    logging.info(build_command)
+    subprocess.call(build_command, shell=True)
+    
+    pkg = serialise.load_from_file(str(package))
+    userprofile = pathlib.Path(os.getenv("userprofile"))
+    package_path = userprofile / "packages" / pkg.get("name")
+    package_version = package_path /pkg.get("version")
+    logging.info(package_version)
+    if package_version.exists():
+        package_version.rename(str(package_path/ '999.0.0'))
+
+
+COMMANDS = {
+    "#code": lambda req: REZ_ENV + [*req, "--", "code", str(ROOT)],
+    "#mobu": lambda req: REZ_ENV + [*req, "motionbuilder-2018", "--", "motionbuilder"],
+    "#sym": build_sym,
 }
 
 
@@ -57,12 +77,16 @@ def main():
         post_args = requires[index + 1 :]
         requires = requires[:index]
         # not requires and requires.append("python")
-        callback = commands.get(arg)
+        callback = COMMANDS.get(arg)
         requires = callback(requires) if callback else requires
+        if requires is None:
+            return
         requires += post_args
+        command = " ".join(requires)
         break
+    else:
+        command = " ".join(REZ_ENV + requires)
 
-    command = " ".join(["rez", "env", "--shell", "powershell"] + requires)
     logging.info(command)
     subprocess.run(command)
 
